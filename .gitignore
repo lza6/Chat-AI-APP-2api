@@ -1,0 +1,11 @@
+# sensitive strings scrubbed before any push: secrets, tokens, credentials
+raw/
+jadx_out/
+jadx_bad/
+jadx_debug/
+server.log
+server.err
+*.log
+__pycache__/
+*.apk
+evidence/

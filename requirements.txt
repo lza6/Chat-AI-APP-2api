@@ -1,0 +1,2 @@
+# Default: no third-party dependencies required (pure Python standard library).
+# This file exists only for tooling convention; install is optional.

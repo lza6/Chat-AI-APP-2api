@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat_AI v241 2API Demo</title>
+<style>
+:root {
+  --bg: #0f1117; --panel: #171a23; --panel2: #1e2230; --line: #2a2f42;
+  --text: #e8eaf2; --dim: #8b92a8; --accent: #6c8cff; --accent2: #22c55e; --warn: #f59e0b; --err: #ef4444;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 16px; font-weight: 600; }
+header .tag { font-size: 11px; color: var(--dim); background: var(--panel2); padding: 3px 8px; border-radius: 10px; }
+#health { margin-left: auto; font-size: 11px; color: var(--dim); }
+#health b { color: var(--accent2); }
+main { flex: 1; display: flex; min-height: 0; }
+#chatPane { flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+#msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.msg { max-width: 78%; padding: 10px 14px; border-radius: 12px; line-height: 1.55; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.msg.bot { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg.err { align-self: flex-start; background: #2a1518; border: 1px solid var(--err); color: #fca5a5; font-size: 13px; }
+.msg .src { margin-top: 8px; font-size: 12px; color: var(--dim); border-top: 1px dashed var(--line); padding-top: 6px; }
+#inputBar { display: flex; gap: 8px; padding: 12px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+#inp { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 14px; outline: none; resize: none; height: 44px; }
+#inp:focus { border-color: var(--accent); }
+button { background: var(--accent); border: 0; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; }
+button:hover { filter: brightness(1.1); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+#imgPane { width: 360px; display: flex; flex-direction: column; background: var(--panel); }
+#imgPane .sec { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--dim); font-weight: 600; }
+#imgInputBar { display: flex; gap: 8px; padding: 12px 16px; }
+#imgPrompt { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--text); font-size: 13px; outline: none; }
+#imgOut { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+#imgOut img { width: 100%; border-radius: 10px; border: 1px solid var(--line); }
+#imgOut .cap { font-size: 12px; color: var(--dim); margin-top: 4px; }
+#stats { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 11px; color: var(--dim); line-height: 1.7; }
+.pulse { animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chat_AI v241.0 Mod — 2API</h1>
+  <span class="tag">begamob v2 + goatchat + vulcan</span>
+  <span id="health">健康检查: <b>—</b></span>
+</header>
+<main>
+  <div id="chatPane">
+    <div id="msgs"></div>
+    <div id="inputBar">
+      <textarea id="inp" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+      <button id="send">发送</button>
+    </div>
+  </div>
+  <div id="imgPane">
+    <div class="sec">Journey AI 生图 (goatchat 通道)</div>
+    <div id="imgInputBar">
+      <input id="imgPrompt" placeholder="生图提示词，如: a red sports car at sunset">
+      <button id="imgSend">生成</button>
+    </div>
+    <div id="imgOut"></div>
+    <div id="stats">stats: —</div>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const msgs = $('#msgs'), inp = $('#inp'), sendBtn = $('#send');
+const history = [];
+
+function add(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+
+async function health() {
+  try {
+    const r = await fetch('/health');
+    const j = await r.json();
+    $('#health').innerHTML = '健康检查: <b>' + j.status + '</b> · ' + j.channels.join(' / ');
+    const s = await (await fetch('/stats')).json();
+    $('#stats').textContent = `运行 ${s.uptime_s}s · begamob ${s.begamob_ok}/${s.begamob_ok+s.begamob_fail} · vulcan ${s.vulcan_ok}/${s.vulcan_ok+s.vulcan_fail} · goatchat ${s.goatchat_ok}/${s.goatchat_ok+s.goatchat_fail} · 总请求 ${s.total_req}`;
+  } catch (e) { $('#health').innerHTML = '健康检查: <b style="color:var(--err)">离线</b>'; }
+}
+health(); setInterval(health, 8000);
+
+async function send() {
+  const text = inp.value.trim();
+  if (!text || sendBtn.disabled) return;
+  inp.value = '';
+  sendBtn.disabled = true;
+  add('user', text);
+  history.push({ role: 'user', content: text });
+  const bot = add('bot', '…');
+  bot.classList.add('pulse');
+  let acc = '';
+  try {
+    const r = await fetch('/v1/chat/completions', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, messages: history.slice(-12) })
+    });
+    const rd = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let webSrc = '';
+    while (true) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const p of parts) {
+        const line = p.replace(/^data:\s*/, '').trim();
+        if (!line || line === '[DONE]') continue;
+        try {
+          const j = JSON.parse(line);
+          const d = j.choices?.[0]?.delta?.content || '';
+          if (d) {
+            if (d.startsWith('[web_search_source]')) { webSrc = d; continue; }
+            acc += d;
+            bot.textContent = acc;
+            msgs.scrollTop = msgs.scrollHeight;
+          }
+        } catch (e) {}
+      }
+    }
+    bot.classList.remove('pulse');
+    if (!acc) { bot.className = 'msg err'; bot.textContent = '(空响应)'; }
+    else {
+      if (webSrc) {
+        const src = document.createElement('div');
+        src.className = 'src';
+        try { src.textContent = '来源: ' + JSON.parse(webSrc.slice(19)).map(w => w.title).join(' · '); } catch (e) {}
+        bot.appendChild(src);
+      }
+      history.push({ role: 'assistant', content: acc });
+    }
+  } catch (e) {
+    bot.className = 'msg err';
+    bot.textContent = '请求失败: ' + e.message;
+  }
+  sendBtn.disabled = false;
+  inp.focus();
+}
+sendBtn.onclick = send;
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+$('#imgSend').onclick = async () => {
+  const p = $('#imgPrompt').value.trim();
+  if (!p) return;
+  const btn = $('#imgSend');
+  btn.disabled = true;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = '<div class="cap pulse">生成中…</div>';
+  $('#imgOut').prepend(wrap);
+  try {
+    const r = await fetch('/v1/images/generations', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ prompt: p })
+    });
+    const j = await r.json();
+    if (j.data && j.data[0]) {
+      wrap.innerHTML = '';
+      const img = new Image();
+      img.src = j.data[0].url;
+      img.onload = () => wrap.prepend(img);
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.textContent = (j.meta ? `${j.meta.width}x${j.meta.height} · ` : '') + p.slice(0, 60);
+      wrap.appendChild(cap);
+    } else {
+      wrap.innerHTML = '<div class="cap" style="color:var(--err)">失败: ' + (j.error?.message || '未知') + '</div>';
+    }
+  } catch (e) {
+    wrap.innerHTML = '<div class="cap" style="color:var(--err)">失败: ' + e.message + '</div>';
+  }
+  btn.disabled = false;
+};
+</script>
+</body>
+</html>
